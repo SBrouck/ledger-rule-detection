@@ -1,0 +1,27 @@
+[project]
+name = "ledger-rule-detection"
+version = "0.1.0"
+description = "Planted-rule study on synthetic French general ledgers: FP-growth vs TabPFN vs gradient-boosted trees."
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+  "lightgbm>=4.6",
+  "matplotlib>=3.9",
+  "mlxtend==0.25.0",
+  "numpy>=2.1",
+  "pandas>=2.2",
+  "python-dotenv>=1.0",
+  "scikit-learn>=1.5",
+  "tabpfn==10.2.0",
+  "tabulate>=0.9",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3"]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
