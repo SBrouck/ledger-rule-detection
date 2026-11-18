@@ -62,12 +62,15 @@ def fig_detection() -> None:
 def fig_label_efficiency() -> None:
     """Fig. 2: AUPRC against the number of labelled violations in context (presence features)."""
     v2, v35 = load("phase2_v2.jsonl"), load("phase2_v3.5.jsonl")
-    d = pd.concat([v2.assign(method=v2["method"].replace({"tabpfn": "tabpfn-v2"})), v35.assign(method="tabpfn-3.5")])
+    lr = load("phase2d_threshold_logreg.jsonl")
+    d = pd.concat([v2.assign(method=v2["method"].replace({"tabpfn": "tabpfn-v2"})), v35.assign(method="tabpfn-3.5"),
+                   lr[lr["method"] == "logreg"]])
     d = d[(d["fs"] == "presence") & (d["rate"] == 0.02)]
     fig, axes = plt.subplots(1, 2, figsize=(6.4, 2.2), sharey=True)
     for ax, task in zip(axes, ["R4", "pooled"]):
         t = d[d["task"] == task]
         curve(ax, t[t["method"] == "lgbm"], "auprc", "LightGBM", PINK, marker="s")
+        curve(ax, t[t["method"] == "logreg"], "auprc", "Logistic regression", GREY, marker="^", band=False)
         curve(ax, t[t["method"] == "tabpfn-v2"], "auprc", "TabPFN v2", GREEN, ls="--")
         curve(ax, t[t["method"] == "tabpfn-3.5"], "auprc", "TabPFN-3.5", RED)
         ax.set_title(task if task == "R4" else "Pooled (all purchases and sales)", fontsize=9)

@@ -1,10 +1,10 @@
 # Rule Mining, Gradient Boosting and Tabular In-Context Learning for Error Detection in Accounting Entries
 
-A controlled study of what explicit frequent-itemset mining, gradient-boosted trees and a tabular foundation model (TabPFN) each detect in accounting entries, on synthetic French general ledgers with planted rules, planted violations and planted exceptions.
+A controlled study of what explicit frequent-itemset mining, gradient-boosted trees, logistic regression and a tabular foundation model (TabPFN) each detect in accounting entries, on synthetic French general ledgers with planted rules, planted violations and planted exceptions.
 
 ## Abstract
 
-We generate synthetic general ledgers in the legal French FEC format and plant four rules: two account co-occurrence rules (R1, R2), a numeric threshold (R3) and a co-occurrence rule whose account marginals carry no signal (R4). FP-growth recovers every co-occurrence rule exactly and detects their violations without a single label (AUPRC 1.000), but cannot express the threshold (AUPRC 0.045 to 0.204) and ranks rare correct entries above errors. With labels, LightGBM and TabPFN both learn the threshold. On R4, TabPFN reaches 1.000 with a single labelled violation in context, where LightGBM needs about 20 to pass 0.75. A one-shot diagnostic and a second generator with rare valid patterns qualify this result: new accounts and new combinations are not mistaken for errors, but a valid exception that looks exactly like a violation and was never seen in context (reverse charge on a non-deductible expense) is ranked **above** real violations with one label (AUROC 0.306) and only separated from them after about 20 labelled violations. LightGBM never separates it, even with all labels (0.411).
+We generate synthetic general ledgers in the legal French FEC format and plant four rules: two account co-occurrence rules (R1, R2), a numeric threshold (R3) and a co-occurrence rule whose account marginals carry no signal (R4). FP-growth recovers every co-occurrence rule exactly and detects their violations without a single label (AUPRC 1.000), but cannot express the threshold (AUPRC 0.045 to 0.204) and ranks rare correct entries above errors. On a task that isolates the threshold, a logistic regression with pairwise interactions learns it from one labelled violation (AUPRC 0.979), like TabPFN (1.000), while LightGBM does not (0.238). On R4, TabPFN reaches 1.000 with a single labelled violation in context, where logistic regression and LightGBM need about 20. A one-shot diagnostic and a second generator with rare valid patterns qualify this result: new accounts and new combinations are not mistaken for errors, but a valid exception that looks exactly like a violation and was never seen in context (reverse charge on a non-deductible expense) is ranked **above** real violations with one label (AUROC 0.306) and only separated from them after about 20 labelled violations. LightGBM never separates it, even with all labels (0.411).
 
 ## 1. Setup
 
@@ -26,10 +26,11 @@ Violations are injected per rule at 0.5%, 2% or 5% of eligible entries. For R4 t
 **Methods.**
 - *FP-growth* (mlxtend 0.25), no labels. Items: accounts present, VAT accounts absent, journal, supplier type, a durable flag, total amount in fixed bins that do not align with the R3 threshold. Rules mined on the training companies; an entry is scored by the confidence of the strongest rule it breaks (confidence ≥ 0.9, lift ≥ 1.1).
 - *LightGBM*, 300 trees, learning rate 0.05, `min_child_samples=1` so that it can learn from a handful of positives.
+- *Logistic regression*, pairwise feature interactions, standardised, balanced class weights: a few-label baseline that can express co-occurrence and amount × account terms.
 - *TabPFN* 10.2 with v2 weights and TabPFN-3.5 weights, default settings, Apple MPS.
 - Two feature sets: **presence** (one column per account, journal, supplier type, durable flag, log total) and **amounts** (presence plus each account's signed share of the total).
 
-**Protocol.** Companies are split in two halves; rules and models only see the training half. The context holds at most 3,000 training entries; with `k`, at most k labelled violations (all valid entries keep their label). Tasks: one per rule (entries eligible for the rule) and **pooled** (all purchases and sales, label = breaks any rule). Main metric AUPRC (low prevalence), mean ± standard deviation over 5 seeds. For rare patterns, AUROC of violations against each pattern: 0.5 is chance, below 0.5 means the valid pattern scores higher than real errors.
+**Protocol.** Companies are split in two halves; rules and models only see the training half. The context holds at most 3,000 training entries; with `k`, at most k labelled violations (all valid entries keep their label). Tasks: one per rule (entries eligible for the rule), **R3thr** (all durable purchases, on both sides of the threshold) and **pooled** (all purchases and sales, label = breaks any rule). Main metric AUPRC (low prevalence), mean ± standard deviation over 5 seeds. For rare patterns, AUROC of violations against each pattern: 0.5 is chance, below 0.5 means the valid pattern scores higher than real errors.
 
 ## 2. Results
 
@@ -43,21 +44,36 @@ Rule recovery, 15 datasets: R1, R2 and both halves of R4 are mined exactly at ev
 
 On R3 the mining score is inverted at a 5% violation rate (AUPRC 0.045, AUROC 0.000): an expensed durable purchase looks like any purchase and breaks no rule, while a correctly capitalised one uses 404 instead of 401 and breaks the generic rule `{journal HA} → 401` (confidence 0.97). Frequency-based scoring treats rarity as error.
 
-### 2.2 TabPFN needs one label where LightGBM needs twenty
+### 2.2 TabPFN needs one label where the baselines need twenty
 
 <p align="center"><img src="figures/fig2_label_efficiency.svg" width="720"></p>
 
-*Figure 2. Test AUPRC against the number of labelled violations in context, violation rate 2%, presence features. Bands: one standard deviation.*
+*Figure 2. Test AUPRC against the number of labelled violations in context, violation rate 2%, presence features. Bands: one standard deviation (LightGBM, TabPFN).*
 
 | Task, rate 2% | k = 1 | 2 | 5 | 10 | 20 | all |
 |---|---|---|---|---|---|---|
 | R4, LightGBM | 0.024 | 0.021 | 0.216 ± 0.197 | 0.654 ± 0.201 | 0.751 ± 0.064 | 0.823 ± 0.121 |
+| R4, logistic regression | 0.540 ± 0.135 | 0.456 ± 0.216 | 0.666 ± 0.232 | 0.779 ± 0.266 | 0.999 | 0.999 |
 | R4, TabPFN v2 and 3.5 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 |
 | Pooled, LightGBM | 0.158 ± 0.195 | 0.203 ± 0.206 | 0.319 ± 0.236 | 0.669 ± 0.190 | 0.927 ± 0.037 | 0.993 ± 0.013 |
+| Pooled, logistic regression | 0.280 ± 0.183 | 0.289 ± 0.179 | 0.852 ± 0.047 | 0.906 ± 0.041 | 0.934 ± 0.015 | 1.000 |
 | Pooled, TabPFN v2 | 0.807 ± 0.178 | 0.763 ± 0.281 | 0.984 ± 0.007 | 0.988 ± 0.009 | 0.992 ± 0.009 | 1.000 |
 | Pooled, TabPFN-3.5 | 0.985 ± 0.009 | 0.988 ± 0.012 | 0.988 ± 0.010 | 0.988 ± 0.007 | 0.993 ± 0.008 | 1.000 |
 
-R3 is at 1.000 for both supervised models from k = 1. With amount features, R4 is trivial for every method: a balanced entry with one VAT leg cannot have the supplier line equal to the expense line (ratio 1.000 in all 2,272 valid entries of one dataset, 1.200 or 0.833 in all 41 violations).
+**The threshold.** The R3 task holds only durable purchases above the threshold, where a violation is exactly the presence of 6063 (true on every row): it does not test the threshold, and every supervised model is at 1.000 on it. The R3thr task holds every durable purchase; 6063 is then valid below 500 EUR and a violation above (one dataset: 459 durable purchases with 6063, 9 of them violations).
+
+| R3thr, AUPRC | k = 1 | 2 | 5 | all |
+|---|---|---|---|---|
+| FP-growth (no labels), rate 2% / 5% | | | | 0.196 / 0.025 |
+| LightGBM, rate 2% | 0.238 ± 0.247 | 0.720 ± 0.401 | 0.698 ± 0.402 | 0.730 ± 0.422 |
+| LightGBM, rate 5% | 0.431 ± 0.324 | 0.821 ± 0.164 | 0.847 ± 0.125 | 0.941 ± 0.071 |
+| Logistic regression, rate 2% | 0.979 ± 0.029 | 0.985 ± 0.023 | 0.989 ± 0.024 | 0.989 ± 0.024 |
+| Logistic regression, rate 5% | 0.991 ± 0.011 | 0.994 ± 0.009 | 0.996 ± 0.007 | 0.996 ± 0.007 |
+| TabPFN-3.5, rate 2% and 5% | 1.000 | 1.000 | 1.000 | 1.000 |
+
+The training half holds only 4.6 violations on average at 2% (14.4 at 5%), and the test half 4.8 (12.8): these AUPRC values rest on few positives. A linear model with an amount × account interaction is enough for the threshold; TabPFN brings no measurable gain there.
+
+With amount features, R4 is trivial for every method: a balanced entry with one VAT leg cannot have the supplier line equal to the expense line (ratio 1.000 in all 2,272 valid entries of one dataset, 1.200 or 0.833 in all 41 violations).
 
 **Why one label suffices on R4** (`scripts/r4_one_shot_check.py`). The context holds exactly one violation ("44566 only") among 1,081 entries. Shuffling the context labels drops AUPRC to 0.131 (prevalence 0.058), so there is no leak. Valid entries score 0.000 to 0.002; violations of the seen type 0.55 to 0.94; violations of the **unseen** type ("4452 only") 0.05 to 0.13, above every valid entry. TabPFN does not learn "exactly one of the two" from one example: it gives probability mass to combinations absent from the labelled valid entries. In this generator, those are only violations.
 
@@ -87,8 +103,8 @@ One generator, simple rules, 40 companies per dataset, 5 seeds. Rules are determ
 ## 4. Practical reading
 
 - Co-occurrence rules between accounts: mine them, no labels needed, and keep the rules readable.
-- Thresholds and conditions on amounts: a supervised model with labels.
-- Few labels: TabPFN is far more label-efficient than gradient boosting, but known exceptions to a rule must be present in its context, even as a handful of examples. A confidence threshold does not catch an exception the model has never seen: it is confidently wrong.
+- Thresholds and conditions on amounts: a simple supervised model; logistic regression with interactions needs only a few labels.
+- Co-occurrence with few labels: TabPFN is far more label-efficient than logistic regression or gradient boosting, but known exceptions to a rule must be present in its context, even as a handful of examples. A confidence threshold does not catch an exception the model has never seen: it is confidently wrong.
 
 ## Reproducibility
 
@@ -97,7 +113,7 @@ make setup test
 make data           # 25 datasets, about 400 MB, each validated by the oracle
 make phase1         # FP-growth
 cp .env.example .env    # TABPFN_TOKEN=..., accept the TabPFN-3.5 licence at ux.priorlabs.ai
-make phase2 phase2b phase2c   # several hours on Apple MPS
+make phase2 phase2b phase2c phase2d   # several hours on Apple MPS
 make report figures # results/summary.md, figures/
 ```
 
@@ -108,7 +124,7 @@ LightGBM and TabPFN run in separate processes: in one process on macOS their two
 | `src/ledger/generate.py` | Synthetic FEC ledgers, planted rules, violations and rare valid patterns |
 | `src/ledger/validate.py` | Format checks and independent label oracle |
 | `src/ledger/mining.py` | FP-growth rule recovery and rule-based detection |
-| `src/ledger/supervised.py` | Features, context sampling, LightGBM and TabPFN, metrics |
+| `src/ledger/supervised.py` | Features, context sampling, LightGBM, logistic regression and TabPFN, metrics |
 | `src/ledger/report.py`, `figures.py` | Tables and figures |
 | `scripts/` | Grids per phase, one-shot diagnostic |
 | `tests/` | Generator, oracle and mining tests |

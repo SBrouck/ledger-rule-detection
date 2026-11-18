@@ -70,6 +70,11 @@ def main() -> None:
     le = le[(le["fs"] == "presence") & (le["method"] != "fpgrowth") & le["task"].isin(["R4", "pooled"])]
     print("\n## Phase 2, label efficiency, presence features, AUPRC\n\n" +
           table(le, ["task", "rate", "method"], "k", "auprc"))
+    t = load("phase2d_threshold_logreg.jsonl")
+    print("\n## Phase 2d, R3 threshold task (all durable purchases), AUPRC\n\n" +
+          table(t[t["task"] == "R3thr"], ["rate", "method"], "k", "auprc"))
+    print("\n## Phase 2d, logistic regression, AUPRC\n\n" +
+          table(t[(t["method"] == "logreg") & (t["task"] != "R3thr")], ["task", "rate"], "k", "auprc"))
     b, c = load("phase2b_rare.jsonl").assign(ctx="seen"), load("phase2c_unseen_rare.jsonl").assign(ctx="unseen")
     rare = pd.concat([b, c])
     rare = rare[rare["fs"].isin(["presence", "-"])]

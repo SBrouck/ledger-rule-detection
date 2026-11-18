@@ -72,6 +72,8 @@ def columns(x: pd.DataFrame, fs: str) -> list[str]:
 def task_mask(x: pd.DataFrame, task: str) -> np.ndarray:
     if task == "pooled":
         return (x["journal_HA"].eq(1) | x["journal_VE"].eq(1)).to_numpy()
+    if task == "R3thr":  # every durable purchase, on both sides of the 500 EUR threshold
+        return (x["durable"] == 1).to_numpy()
     return (x["rule"] == task).to_numpy()
 
 
@@ -92,6 +94,15 @@ def context(y: np.ndarray, rng, max_ctx: int, k_pos: int | None) -> np.ndarray:
 def fit_predict(method: str, xtr, ytr, xte, seed: int, model: str) -> np.ndarray:
     if ytr.sum() == 0:
         return np.zeros(len(xte))
+    if method == "logreg":
+        # Few-label baseline: pairwise interactions, balanced class weights.
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.pipeline import make_pipeline
+        from sklearn.preprocessing import PolynomialFeatures, StandardScaler
+        clf = make_pipeline(PolynomialFeatures(degree=2, interaction_only=True, include_bias=False),
+                            StandardScaler(), LogisticRegression(class_weight="balanced", max_iter=5000))
+        clf.fit(xtr, ytr)
+        return clf.predict_proba(xte)[:, 1]
     if method == "lgbm":
         import lightgbm as lgb
         clf = lgb.LGBMClassifier(n_estimators=300, learning_rate=0.05, min_child_samples=1,

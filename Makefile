@@ -1,4 +1,4 @@
-.PHONY: setup test data phase1 phase2 phase2b phase2c report figures all
+.PHONY: setup test data phase1 phase2 phase2b phase2c phase2d report figures all
 
 setup:      ## install the pinned environment
 	uv sync
@@ -16,8 +16,10 @@ phase2b:    ## rare valid patterns, seen in context
 	./scripts/phase2b_rare.sh
 phase2c:    ## rare valid patterns, unseen in context
 	./scripts/phase2c_unseen_rare.sh
+phase2d:    ## R3 threshold task and logistic-regression baseline
+	./scripts/phase2d_threshold_logreg.sh
 report:     ## markdown tables behind every number in the README
 	uv run python -m ledger.report > results/summary.md
 figures:
 	uv run python -m ledger.figures
-all: data phase1 phase2 phase2b phase2c report figures
+all: data phase1 phase2 phase2b phase2c phase2d report figures
